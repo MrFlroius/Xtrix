@@ -222,9 +222,11 @@ class SQLUtil(SQLBaseUtil):
                        (Tag,   Post): ('tag_id',   'post_id',  'tags_posts'),
                        (Post,   Tag): ('post_id',  'tag_id',   'tags_posts')}
 
-    __insert_template__ = 'INSERT INTO {table} ({col}) VALUES ({val})'
+    __insert_template__ = 'INSERT INTO {table} ({cols}) VALUES ({val})'
     __binding_exist_template__ = 'SELECT {binding_table[0]}, {binding_table[1]} FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[0]}={vals[1]}'
     __binding_delete_template__ = 'DELETE FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[1]}={vals[1]}'
+    __delete_template__ = 'DELETE FROM {table} WHERE {obj_id}={obj_id_val}'
+    __select_template__ = 'SELECT ({cols}) FROM {table} WHERE {obj_id[0]}={obj_id[1]}'
 
     def _execute(self, script):
         with self.connection:
@@ -234,8 +236,6 @@ class SQLUtil(SQLBaseUtil):
                 pass
             if not __test_mode__:
                 return self.cursor.execute(script)
-            else:
-                return True
 
     def add(self, obj: BaseDBObj):
         """add BaseDBObj obj to db
@@ -243,7 +243,7 @@ class SQLUtil(SQLBaseUtil):
         scripts = []
         with self.connection:
             _obj = dict(obj)
-            script = self.__insert_template__.format(table=obj.__table__, col=', '.join(_obj.keys()),
+            script = self.__insert_template__.format(table=obj.__table__, cols=', '.join(_obj.keys()),
                                                         val=', '.join(map(sql_translate, _obj.values())))
             self._execute(script)
 
@@ -251,14 +251,14 @@ class SQLUtil(SQLBaseUtil):
         """INSERT INTO binding_table[2] (binding_table[0], binding_table[1]) VALUES (ids[0], ids[1])"""
         with self.connection:
             script = self.__insert_template__.format(
-                table=binding_table[2], col=', '.join(binding_table[:2]), val=', '.join(map(str, ids)))
+                table=binding_table[2], cols=', '.join(binding_table[:2]), val=', '.join(map(str, ids)))
             self._execute(script)
 
     def _get_bindable_ids(self, *obj, binding_table=None):
         """return 2 ids if it possible, types of elements of obj may be int or BaseDBObj
         (DARK MAGIC)"""
         if len(obj) > 2:
-            raise Warning("Only 2 objects would be binded")
+            raise Warning("Only 2 first objects would be binded")
         _obj = list(obj[:2])
         ids = [None] * 2
         if all(isinstance(x, (int, BaseDBObj)) for x in _obj):
@@ -327,7 +327,15 @@ class SQLUtil(SQLBaseUtil):
         pass
 
     def pull(self, obj: BaseDBObj):
-        pass
+        _obj = dict(obj)
+        script = self.__select_template__.format(table=obj.__table__, cols=', '.join(_obj.keys()), obj_id=[(k, v) for k, v in _obj.items() if '_id' in k][0])
+        vals = self._execute(script)
+        if vals is not None:
+            map(labda k, v: setattr(obj, k, v), _obj.keys(), vals)
+        else:
+            raise ValueError('No object in db')
+
+
 
 if __name__ == '__main__':
     database = SQLUtil('xtrix_test.db')
@@ -335,4 +343,4 @@ if __name__ == '__main__':
     database.add(User(1, 'MrFlorius', user_rating=100500))
     bt = database._binding_tables[(User, Group)]
     database.bind(1, 2, binding_table=bt)
-    database.unbind(User(1, 'MrFlorius', user_rating=100500), 2, binding_table=bt)
+    database.pull(User(1, 'MrFlorius', user_rating=100500))
