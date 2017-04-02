@@ -2,6 +2,10 @@ import time
 import sqlite3
 from config import DatabaseConfig
 
+
+__test_mode__ = True
+__log_to_file__ = False
+
 # administrator permissions, for admin group
 admin = dict(read_posts=1, write_posts=1, change_own_posts=1, delete_own_posts=1, change_self=1,
              delete_self=1,
@@ -64,6 +68,7 @@ class Image(BaseDBObj): pass
 class Ban(BaseDBObj): pass
 class Comment(BaseDBObj): pass
 
+
 class Group(BaseDBObj):
     """Group class
     group_id: id of current group, unique
@@ -81,6 +86,7 @@ class Group(BaseDBObj):
         self.group_creation_date = SQLBaseUtil.timestamp()
         for a in permissions.items():
             setattr(self, a[0], a[1])
+
 
 class User(BaseDBObj):
     """User class
@@ -220,6 +226,17 @@ class SQLUtil(SQLBaseUtil):
     __binding_exist_template__ = 'SELECT {binding_table[0]}, {binding_table[1]} FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[0]}={vals[1]}'
     __binding_delete_template__ = 'DELETE FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[1]}={vals[1]}'
 
+    def _execute(self, script):
+        with self.connection:
+            print(script)
+            if __log_to_file__:
+                # TODO: Replace with log
+                pass
+            if not __test_mode__:
+                return self.cursor.execute(script)
+            else:
+                return True
+
     def add(self, obj: BaseDBObj):
         """add BaseDBObj obj to db
         (work with piece of magic, thats why obj public fielfs should be same with its table's columns name)"""
@@ -228,16 +245,14 @@ class SQLUtil(SQLBaseUtil):
             _obj = dict(obj)
             script = self.__insert_template__.format(table=obj.__table__, col=', '.join(_obj.keys()),
                                                         val=', '.join(map(sql_translate, _obj.values())))
-            print(script) #TODO: Replace with log
-            # self.cursor.execute(script)
+            self._execute(script)
 
     def _bind_by_id(self, ids, binding_table):
         """INSERT INTO binding_table[2] (binding_table[0], binding_table[1]) VALUES (ids[0], ids[1])"""
         with self.connection:
             script = self.__insert_template__.format(
                 table=binding_table[2], col=', '.join(binding_table[:2]), val=', '.join(map(str, ids)))
-            print(script) #TODO: Replace with log
-            # self.cursor.execute(script)
+            self._execute(script)
 
     def _get_bindable_ids(self, *obj, binding_table=None):
         """return 2 ids if it possible, types of elements of obj may be int or BaseDBObj
@@ -282,24 +297,28 @@ class SQLUtil(SQLBaseUtil):
         else:
             raise ValueError('Objects are of unsupported types')
 
-        return ids
+        return ids, binding_table
 
-    def _is_binding_exist(self, binding_table, *ids):
+    def _unbind_by_ids(self, ids, binding_table):
+        if self._is_binding_exist(ids, binding_table):
+            script = self.__binding_delete_template__.format(binding_table=binding_table, vals=ids)
+            self._execute(script)
+        else:
+            raise ValueError('Binding is not exist')
+
+    def _is_binding_exist(self, ids, binding_table):
         with self.connection:
             return self.cursor.execute(self.__binding_exist_template__.format(binding_table=binding_table, vals=ids)).fetchall() != []
 
     def bind(self, *obj, binding_table=None):
         """bind 2 obj if it possible, types of elements of obj may be int or BaseDBObj"""
-        ids = self._get_bindable_ids(*obj, binding_table=binding_table)
+        ids, _binding_table = self._get_bindable_ids(*obj, binding_table=binding_table)
         # bind by ids and binding table
-        self._bind_by_id(ids, binding_table)
+        self._bind_by_id(ids, _binding_table)
 
     def unbind(self, *obj, binding_table=None):
-        ids = self._get_bindable_ids(*obj, binding_table=binding_table)
-        if self._is_binding_exist(binding_table, *ids):
-            script = self.__binding_delete_template__.format(binding_table=binding_table, vals=ids)
-            print(script)
-
+        ids, _binding_table = self._get_bindable_ids(*obj, binding_table=binding_table)
+        self._unbind_by_ids(ids, _binding_table)
 
     def delete(self, obj: BaseDBObj):
         pass

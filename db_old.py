@@ -29,6 +29,18 @@ user = dict(read_posts=1, write_posts=1, change_own_posts=1, delete_own_posts=1,
             create_tags=0, use_service_tags=0, read_logs=0, change_logs=0, change_posts=0, delete_posts=0,
             ban_users=0, permanent_ban_users=0, change_users=0, delete_users=0)
 
+class Logger(object):
+    """docstring for Logger."""
+    def __init__(self, fname:str):
+        self.fname = str
+
+    def is_sql_request(s: str):
+        pass
+
+    def log(s: str):
+        pass
+
+
 class SQLBaseUtil:
     def __init__(self, db: str):
         self.connection = sqlite3.connect(db, check_same_thread=False, isolation_level='EXCLUSIVE')

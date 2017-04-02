@@ -134,14 +134,3 @@ class DatabaseConfig:
                 CONSTRAINT users_gropups_users_user_id_fk FOREIGN KEY (user_id) REFERENCES users (user_id),
                 CONSTRAINT users_gropups_groups_group_id_fk FOREIGN KEY (group_id) REFERENCES groups (group_id)
             );'''
-# TODO
-# class Log:
-#     _print = True
-#     _file = None
-#
-#     def __init__(fname: str, console_output=True):
-#         _file = open(str, 'wr+')
-#         _print = console_output
-#
-#     def sql_request(s: str):
-#         _file.write('[sql][{time}] \"{request}\"'.format(time=))
