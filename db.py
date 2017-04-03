@@ -34,7 +34,6 @@ user = dict(read_posts=1, write_posts=1, change_own_posts=1, delete_own_posts=1,
             create_tags=0, use_service_tags=0, read_logs=0, change_logs=0, change_posts=0, delete_posts=0,
             ban_users=0, permanent_ban_users=0, change_users=0, delete_users=0)
 
-
 # sql_translate = lambda a: '\"{a}\"'.format(a=a) if type(a) == str elif  str(a)
 
 def sql_translate(a):
@@ -68,7 +67,6 @@ class BaseDBObj:
         return list(vars(self).keys())
 
     def vals(self):
-        print(list(map(sql_translate, vars(self).values())))
         return list(map(sql_translate, vars(self).values()))
 
 class Group(BaseDBObj): pass
@@ -235,8 +233,9 @@ class SQLUtil(SQLBaseUtil):
     __insert_template__ = 'INSERT INTO {table} ({cols}) VALUES ({val})'
     __binding_exist_template__ = 'SELECT {binding_table[0]}, {binding_table[1]} FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[0]}={vals[1]}'
     __binding_delete_template__ = 'DELETE FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[1]}={vals[1]}'
-    __delete_template__ = 'DELETE FROM {table} WHERE {obj_id}={obj_id_val}'
+    __delete_template__ = 'DELETE FROM {table} WHERE {obj_id[0]}={obj_id[1]}'
     __select_template__ = 'SELECT ({cols}) FROM {table} WHERE {obj_id[0]}={obj_id[1]}'
+    __is_exist_template__ = 'SELECT ({cols}) FROM {table}'
     __update_template__ = 'UPDATE {table} SET {column_value} WHERE {obj_id[0]}={obj_id[1]}'
 
     def _execute(self, script):
@@ -315,7 +314,13 @@ class SQLUtil(SQLBaseUtil):
         else:
             raise ValueError('Binding is not exist')
 
+    def _is_exist(self, obj: BaseDBObj):
+        """check if object exist in database"""
+        return self.cursor.execute(self.__is_exist_template__.format(table=obj.__table__,
+                                    cols=' ,'.join(obj.cols()))).fetchall() != []
+
     def _is_binding_exist(self, ids, binding_table):
+        """check if binding exist in database by binding_table and ids"""
         with self.connection:
             return self.cursor.execute(self.__binding_exist_template__.format(binding_table=binding_table, vals=ids)).fetchall() != []
 
@@ -330,12 +335,15 @@ class SQLUtil(SQLBaseUtil):
         self._unbind_by_ids(ids, _binding_table)
 
     def delete(self, obj: BaseDBObj):
-        pass
+        """delete object from database"""
+        script = self.__delete_template__.format(table=obj.__table__, obj_id=obj.obj_id())
+        with self.connection:
+            self._execute(script)
 
     def push(self, obj: BaseDBObj):
         """update object fields in database by object id"""
         script = self.__update_template__.format(table=obj.__table__, obj_id=obj.obj_id(), column_value=', '.join(
-                ['{k}={v}'.format(k=key, v=sql_translate(value)) if '_id' not in key for key, value in list(vars(obj).items())]))
+                ['{k}={v}'.format(k=key, v=sql_translate(value))  for key, value in list(vars(obj).items()) if '_id' not in key]))
         self._execute(script)
 
     def pull(self, obj: BaseDBObj):
@@ -357,4 +365,5 @@ if __name__ == '__main__':
     bt = database._binding_tables[(User, Group)]
     database.bind(1, 2, binding_table=bt)
     database.push(user)
+    database.delete(user)
     database.pull(user)
