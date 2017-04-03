@@ -60,6 +60,17 @@ class BaseDBObj:
         for a in vars(self).items():
             yield a
 
+    def obj_id(self):
+        """return: tuple where 1st element is id column name and 2nd is id value, (col_name, id_val)"""
+        return [(k, v) for k, v in vars(self).items() if '_id' in k][0]
+
+    def cols(self):
+        return list(vars(self).keys())
+
+    def vals(self):
+        print(list(map(sql_translate, vars(self).values())))
+        return list(map(sql_translate, vars(self).values()))
+
 class Group(BaseDBObj): pass
 class User(BaseDBObj): pass
 class Post(BaseDBObj): pass
@@ -86,7 +97,6 @@ class Group(BaseDBObj):
         self.group_creation_date = SQLBaseUtil.timestamp()
         for a in permissions.items():
             setattr(self, a[0], a[1])
-
 
 class User(BaseDBObj):
     """User class
@@ -227,6 +237,7 @@ class SQLUtil(SQLBaseUtil):
     __binding_delete_template__ = 'DELETE FROM {binding_table[2]} WHERE {binding_table[0]}={vals[0]} AND {binding_table[1]}={vals[1]}'
     __delete_template__ = 'DELETE FROM {table} WHERE {obj_id}={obj_id_val}'
     __select_template__ = 'SELECT ({cols}) FROM {table} WHERE {obj_id[0]}={obj_id[1]}'
+    __update_template__ = 'UPDATE {table} SET {column_value} WHERE {obj_id[0]}={obj_id[1]}'
 
     def _execute(self, script):
         with self.connection:
@@ -242,9 +253,7 @@ class SQLUtil(SQLBaseUtil):
         (work with piece of magic, thats why obj public fielfs should be same with its table's columns name)"""
         scripts = []
         with self.connection:
-            _obj = dict(obj)
-            script = self.__insert_template__.format(table=obj.__table__, cols=', '.join(_obj.keys()),
-                                                        val=', '.join(map(sql_translate, _obj.values())))
+            script = self.__insert_template__.format(table=obj.__table__, cols=', '.join(obj.cols()), val=', '.join(obj.vals()))
             self._execute(script)
 
     def _bind_by_id(self, ids, binding_table):
@@ -324,14 +333,17 @@ class SQLUtil(SQLBaseUtil):
         pass
 
     def push(self, obj: BaseDBObj):
-        pass
+        """update object fields in database by object id"""
+        script = self.__update_template__.format(table=obj.__table__, obj_id=obj.obj_id(), column_value=', '.join(
+                ['{k}={v}'.format(k=key, v=sql_translate(value)) if '_id' not in key for key, value in list(vars(obj).items())]))
+        self._execute(script)
 
     def pull(self, obj: BaseDBObj):
-        _obj = dict(obj)
-        script = self.__select_template__.format(table=obj.__table__, cols=', '.join(_obj.keys()), obj_id=[(k, v) for k, v in _obj.items() if '_id' in k][0])
+        """update object fields with values frpm database by object id"""
+        script = self.__select_template__.format(table=obj.__table__, cols=', '.join(obj.cols()), obj_id=obj.obj_id())
         vals = self._execute(script)
         if vals is not None:
-            map(labda k, v: setattr(obj, k, v), _obj.keys(), vals)
+            map(lambda k, v: setattr(obj, k, v), _obj.keys(), vals)
         else:
             raise ValueError('No object in db')
 
@@ -340,7 +352,9 @@ class SQLUtil(SQLBaseUtil):
 if __name__ == '__main__':
     database = SQLUtil('xtrix_test.db')
     # database.reset()
-    database.add(User(1, 'MrFlorius', user_rating=100500))
+    user = User(1, 'MrFlorius', user_rating=100500)
+    database.add(user)
     bt = database._binding_tables[(User, Group)]
     database.bind(1, 2, binding_table=bt)
-    database.pull(User(1, 'MrFlorius', user_rating=100500))
+    database.push(user)
+    database.pull(user)
